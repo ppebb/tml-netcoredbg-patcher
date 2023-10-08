@@ -34,21 +34,28 @@ public class Program {
         if (string.IsNullOrEmpty(tmlPath))
             tmlPath = TmlPath();
 
+        Console.WriteLine($"Using tModLoader at {tmlPath}");
+
         if (!File.Exists(tmlPath))
             throw new FileNotFoundException("Unable to locate tModLoader, please pass your tModLoader.dll location using --path", tmlPath);
 
-
-        File.Delete(tmlPath + ".bak");
+        Console.WriteLine($"Found tModLoader at {tmlPath}");
 
         using var resolver = new DefaultAssemblyResolver();
         Directory.GetFiles(Path.GetDirectoryName(tmlPath)!, "*.dll", SearchOption.AllDirectories).ToList().ForEach(p => resolver.AddSearchDirectory(Path.GetDirectoryName(p)));
 
         ModuleDefinition md = ModuleDefinition.ReadModule(tmlPath, new ReaderParameters { AssemblyResolver = resolver });
+
+        Console.WriteLine("Patching Terraria.ModLoader.Core.AssemblyManager/ModLoadContext");
         TypeDefinition assemblyManager = md.GetType("Terraria.ModLoader.Core.AssemblyManager");
         TypeDefinition modLoadContext = md.GetType("Terraria.ModLoader.Core.AssemblyManager/ModLoadContext");
         MethodDefinition loadAssemblies = modLoadContext.FindMethod("LoadAssemblies")!;
         ILContext il = new(loadAssemblies);
         ILCursor c = new(il);
+
+        MethodInfo loadFromAssemblyPath = typeof(AssemblyLoadContext).GetMethod("LoadFromAssemblyPath", BindingFlags.Public | BindingFlags.Instance)!;
+        if (c.TryGotoNext(MoveType.After, i => i.MatchCall(loadFromAssemblyPath)))
+            throw new Exception("tModLoader is already patched");
 
         c.GotoNext(MoveType.Before,
             i => i.MatchLdarg0(),
@@ -72,17 +79,22 @@ public class Program {
 
         c.Emit(OpCodes.Call, typeof(System.IO.Path).GetMethod("ChangeExtension", BindingFlags.Public | BindingFlags.Static)!);
 
-        c.Emit(OpCodes.Call, typeof(AssemblyLoadContext).GetMethod("LoadFromAssemblyPath", BindingFlags.Public | BindingFlags.Instance)!);
+        c.Emit(OpCodes.Call, loadFromAssemblyPath);
+        Console.WriteLine("Terraria.ModLoader.Core.AssemblyManager/ModLoadContext patched successfully");
 
         using MemoryStream ms = new();
         md.Write(ms);
         md.Dispose();
 
+        File.Delete(tmlPath + ".bak");
         File.Move(tmlPath, tmlPath + ".bak");
+        Console.WriteLine($"Backup created at {tmlPath + ".bak"}");
 
         using FileStream fs = new(string.IsNullOrEmpty(outputPath) ? tmlPath : outputPath, FileMode.Create);
         ms.Position = 0;
         ms.CopyTo(fs);
+
+        Console.WriteLine($"{tmlPath} patched successfully, and written to {(string.IsNullOrEmpty(outputPath) ? tmlPath : outputPath)}");
     }
 
     public static FieldDefinition FindField(TypeDefinition t, string f) {
@@ -117,6 +129,6 @@ public class Program {
                 return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Personal), ".local", "share", "Steam/steamapps/common/tModLoader/tModLoader.dll");
         }
 
-        throw new PlatformNotSupportedException("Unknown or unsupported platform!");
+        throw new PlatformNotSupportedException("Unknown or unsupported platform");
     }
 }
