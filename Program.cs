@@ -43,13 +43,32 @@ public class Program {
 
         using var resolver = new DefaultAssemblyResolver();
         Directory.GetFiles(Path.GetDirectoryName(tmlPath)!, "*.dll", SearchOption.AllDirectories).ToList().ForEach(p => resolver.AddSearchDirectory(Path.GetDirectoryName(p)));
-
         ModuleDefinition md = ModuleDefinition.ReadModule(tmlPath, new ReaderParameters { AssemblyResolver = resolver });
 
+        PatchModLoadContext(md);
+
+        PatchMain(md);
+
+        using MemoryStream ms = new();
+        md.Write(ms);
+        md.Dispose();
+
+        File.Delete(tmlPath + ".bak");
+        File.Move(tmlPath, tmlPath + ".bak");
+        Console.WriteLine($"Backup created at {tmlPath + ".bak"}");
+
+        using FileStream fs = new(string.IsNullOrEmpty(outputPath) ? tmlPath : outputPath, FileMode.Create);
+        ms.Position = 0;
+        ms.CopyTo(fs);
+
+        Console.WriteLine($"{tmlPath} patched successfully, and written to {(string.IsNullOrEmpty(outputPath) ? tmlPath : outputPath)}");
+    }
+
+    public static void PatchModLoadContext(ModuleDefinition md) {
         Console.WriteLine("Patching Terraria.ModLoader.Core.AssemblyManager/ModLoadContext");
         TypeDefinition assemblyManager = md.GetType("Terraria.ModLoader.Core.AssemblyManager");
         TypeDefinition modLoadContext = md.GetType("Terraria.ModLoader.Core.AssemblyManager/ModLoadContext");
-        MethodDefinition loadAssemblies = modLoadContext.FindMethod("LoadAssemblies")!;
+        MethodDefinition loadAssemblies = FindMethod(modLoadContext, "LoadAssemblies")!;
         ILContext il = new(loadAssemblies);
         ILCursor c = new(il);
 
@@ -81,20 +100,31 @@ public class Program {
 
         c.Emit(OpCodes.Call, loadFromAssemblyPath);
         Console.WriteLine("Terraria.ModLoader.Core.AssemblyManager/ModLoadContext patched successfully");
+    }
 
-        using MemoryStream ms = new();
-        md.Write(ms);
-        md.Dispose();
+    public static void PatchMain(ModuleDefinition md) {
+        Console.WriteLine("Patching Terraria.Main");
+        TypeDefinition main = md.GetType("Terraria.Main");
+        MethodDefinition drawVersionNumber = FindMethod(main, "DrawVersionNumber");
+        ILContext il = new(drawVersionNumber);
+        ILCursor c = new(il);
 
-        File.Delete(tmlPath + ".bak");
-        File.Move(tmlPath, tmlPath + ".bak");
-        Console.WriteLine($"Backup created at {tmlPath + ".bak"}");
+        if (c.TryGotoNext(MoveType.After, i => i.MatchLdstr("Patched by ppeb!\n")))
+            throw new Exception("tModLoader is already patched");
 
-        using FileStream fs = new(string.IsNullOrEmpty(outputPath) ? tmlPath : outputPath, FileMode.Create);
-        ms.Position = 0;
-        ms.CopyTo(fs);
+        c.GotoNext(MoveType.Before,
+            i => i.MatchLdsfld(FindField(md.GetType("Terraria.GameContent.FontAssets"), "MouseText")),
+            i => i.MatchCallvirt(out _),
+            i => i.MatchLdloc3(),
+            i => i.MatchCallvirt(out _),
+            i => i.MatchStloc(4)
+        );
 
-        Console.WriteLine($"{tmlPath} patched successfully, and written to {(string.IsNullOrEmpty(outputPath) ? tmlPath : outputPath)}");
+        c.Emit(OpCodes.Ldstr, "Patched by ppeb!\n");
+        c.Emit(OpCodes.Ldloc_3);
+        c.Emit(OpCodes.Call, typeof(System.String).GetMethod("Concat", BindingFlags.Public | BindingFlags.Static, new Type[] { typeof(string), typeof(string) })!);
+        c.Emit(OpCodes.Stloc_3);
+        Console.WriteLine("Terraria.Main patched successfully");
     }
 
     public static FieldDefinition FindField(TypeDefinition t, string f) {
