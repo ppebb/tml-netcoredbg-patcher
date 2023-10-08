@@ -98,7 +98,7 @@ public class Program {
         MethodDefinition? field = t.FindMethod(f);
 
         if (field == null)
-            throw new Exception($"Method {f} not found in {t}, available fields are:\n{string.Join("\n", t.Methods.Select(m => m.Name))}");
+            throw new Exception($"Method {f} not found in {t}, available methods are:\n{string.Join("\n", t.Methods.Select(m => m.Name))}");
 
         return field;
     }
