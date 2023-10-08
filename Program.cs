@@ -53,11 +53,11 @@ public class Program {
         c.GotoNext(MoveType.Before,
             i => i.MatchLdarg0(),
             i => i.MatchLdarg0(),
-            i => i.MatchLdfld(modLoadContext.FindField("modFile")!),
-            i => i.MatchCall(assemblyManager.FindMethod("GetModAssembly")!),
+            i => i.MatchLdfld(FindField(modLoadContext, "modFile")),
+            i => i.MatchCall(FindMethod(assemblyManager, "GetModAssembly")!),
             i => i.MatchLdarg0(),
-            i => i.MatchLdfld(modLoadContext.FindField("properties")!),
-            i => i.MatchLdfld(md.GetType("Terraria.ModLoader.Core.BuildProperties").FindField("eacPath")!),
+            i => i.MatchLdfld(FindField(modLoadContext, "properties")!),
+            i => i.MatchLdfld(FindField(md.GetType("Terraria.ModLoader.Core.BuildProperties"), "eacPath")!),
             i => i.MatchCall(typeof(System.IO.File).GetMethod("ReadAllBytes", BindingFlags.Public | BindingFlags.Static)!)
         );
         c.RemoveRange(9);
@@ -65,8 +65,8 @@ public class Program {
         c.Emit(OpCodes.Ldarg_0);
 
         c.Emit(OpCodes.Ldarg_0);
-        c.Emit(OpCodes.Ldfld, modLoadContext.FindField("properties")!);
-        c.Emit(OpCodes.Ldfld, md.GetType("Terraria.ModLoader.Core.BuildProperties").FindField("eacPath")!);
+        c.Emit(OpCodes.Ldfld, FindField(modLoadContext, "properties")!);
+        c.Emit(OpCodes.Ldfld, FindField(md.GetType("Terraria.ModLoader.Core.BuildProperties"), "eacPath")!);
 
         c.Emit(OpCodes.Ldstr, ".dll");
 
@@ -83,6 +83,24 @@ public class Program {
         using FileStream fs = new(string.IsNullOrEmpty(outputPath) ? tmlPath : outputPath, FileMode.Create);
         ms.Position = 0;
         ms.CopyTo(fs);
+    }
+
+    public static FieldDefinition FindField(TypeDefinition t, string f) {
+        FieldDefinition? field = t.FindField(f);
+
+        if (field == null)
+            throw new Exception($"Field {f} not found in {t}, available fields are\n{string.Join("\n", t.Fields.Select(f => f.Name))}");
+
+        return field;
+    }
+
+    public static MethodDefinition FindMethod(TypeDefinition t, string f) {
+        MethodDefinition? field = t.FindMethod(f);
+
+        if (field == null)
+            throw new Exception($"Method {f} not found in {t}, available fields are:\n{string.Join("\n", t.Methods.Select(m => m.Name))}");
+
+        return field;
     }
 
     public static string TmlPath() {
