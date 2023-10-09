@@ -220,7 +220,7 @@ public class Program {
 
     public static string TmlDirectory() {
         if (OperatingSystem.IsWindows())
-            return "C:\\Program Files\\Steam\\steamapps\\common\\tModLoader"; // This shouldn't break right??
+            return "C:\\Program Files (x86)\\Steam\\steamapps\\common\\tModLoader"; // This shouldn't break right??
         else if (OperatingSystem.IsMacOS())
             return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Personal), "Library/Application Support/Steam/steamapps/common/tModLoader");
         else if (OperatingSystem.IsLinux()) {
